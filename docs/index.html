@@ -22,6 +22,7 @@
   --line: #DCE1E7;
   --accent: #1F5BB8;
   --accent-fg: #FFFFFF;
+  --accent-soft: #E3ECFA;
   --rec: #D43A3A;
   --rec-soft: #FBE3E3;
   --ok: #2F7D4F;
@@ -34,16 +35,17 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #14171B; --surface: #1D2127; --fg: #E8ECF1; --muted: #9AA4B0; --line: #2E343C;
-    --accent: #6B9BEA; --accent-fg: #0E1520; --rec: #F06363; --rec-soft: #3A2224;
+    --accent: #6B9BEA; --accent-fg: #0E1520; --accent-soft: #22324D; --rec: #F06363; --rec-soft: #3A2224;
     --ok: #6CC793; --warn-bg: #3A3220; --warn-fg: #F2D894; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #14171B; --surface: #1D2127; --fg: #E8ECF1; --muted: #9AA4B0; --line: #2E343C;
-  --accent: #6B9BEA; --accent-fg: #0E1520; --rec: #F06363; --rec-soft: #3A2224;
+  --accent: #6B9BEA; --accent-fg: #0E1520; --accent-soft: #22324D; --rec: #F06363; --rec-soft: #3A2224;
   --ok: #6CC793; --warn-bg: #3A3220; --warn-fg: #F2D894; color-scheme: dark;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; }
 :root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
 body {
@@ -110,6 +112,30 @@ audio { width: 100%; }
 .toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: calc(100% - 32px); }
 .toast.show { opacity: 1; }
 .hint { font-size: 13px; color: var(--muted); margin: 0; }
+
+/* 發言人與註記 */
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.panel.sticky { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; box-shadow: 0 8px 18px -14px rgba(0, 0, 0, .55); }
+.panel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.linkbtn { background: none; border: 0; color: var(--accent); font-size: 14px; font-weight: 600; padding: 4px 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 999px; padding: 6px 14px; font-size: 15px; display: inline-flex; align-items: center; gap: 6px; }
+.chip.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
+.chip.add { border-style: dashed; color: var(--accent); }
+.chip .x { color: var(--rec); font-weight: 700; }
+.inline-form { display: flex; gap: 8px; }
+.inline-form input, .sheet textarea { flex: 1; min-width: 0; font: inherit; font-size: 16px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+.inline-form .btn { flex: none; padding: 8px 14px; }
+.who { display: inline-block; font-size: 13px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 6px; padding: 0 6px; margin-right: 6px; }
+.line { cursor: pointer; border-radius: 8px; }
+.line:active { background: var(--accent-soft); }
+.line.note p { color: var(--warn-fg); background: var(--warn-bg); border-radius: 8px; padding: 2px 8px; }
+.sheet-backdrop { position: fixed; inset: 0; z-index: 30; background: rgba(0, 0, 0, .45); display: flex; align-items: flex-end; justify-content: center; }
+.sheet { background: var(--surface); color: var(--fg); width: 100%; max-width: 640px; border-radius: 16px 16px 0 0; display: flex; flex-direction: column; gap: 12px;
+  padding: 16px max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.sheet textarea { min-height: 96px; resize: vertical; }
+.sheet .actions { grid-template-columns: repeat(3, 1fr); }
 </style>
 </head>
 <body>
@@ -143,6 +169,22 @@ audio { width: 100%; }
       <p class="hint">錄音時請保持螢幕開啟、不要切換到其他 App，否則手機會暫停辨識。</p>
     </div>
 
+    <div class="panel sticky" id="speakerPanel">
+      <div class="panel-head">
+        <h2>現在發言</h2>
+        <button class="linkbtn" id="manageBtn">編輯名單</button>
+      </div>
+      <div class="chips" id="chips"></div>
+      <form class="inline-form" id="addSpeakerForm" hidden>
+        <input id="newSpeaker" placeholder="輸入部門或姓名，例如：業務部" autocomplete="off" enterkeyhint="done">
+        <button class="btn primary" type="submit">加入</button>
+      </form>
+      <form class="inline-form" id="noteForm">
+        <input id="noteInput" placeholder="插入註記，例如：決議、待辦、王經理負責" autocomplete="off" enterkeyhint="send">
+        <button class="btn" type="submit">註記</button>
+      </form>
+    </div>
+
     <div id="live" class="transcript" aria-live="polite">
       <p class="empty">開始錄音後，說話內容會即時變成文字顯示在這裡。</p>
     </div>
@@ -167,12 +209,30 @@ audio { width: 100%; }
       <button class="btn" id="dlAudioBtn">下載錄音</button>
     </div>
     <audio id="player" controls hidden></audio>
+    <div class="panel">
+      <h2>點名字插入到游標位置</h2>
+      <div class="chips" id="detailChips"></div>
+    </div>
     <textarea id="editor" class="editor" aria-label="逐字稿（可直接修改）"></textarea>
     <p class="hint">逐字稿可以直接修改，會自動儲存。所有資料只存在這支手機的瀏覽器裡。</p>
     <button class="btn danger" id="delBtn">刪除這場會議</button>
   </section>
 
 </main>
+
+<!-- 點一句話後出現的編輯面板 -->
+<div class="sheet-backdrop" id="sheet" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <div class="panel-head"><h2 id="sheetTitle">編輯這一句</h2><span class="hint" id="sheetTime"></span></div>
+    <textarea id="sheetText" aria-label="內容"></textarea>
+    <div class="chips" id="sheetChips"></div>
+    <div class="actions">
+      <button class="btn danger" id="sheetDel">刪除</button>
+      <button class="btn" id="sheetCancel">取消</button>
+      <button class="btn primary" id="sheetSave">儲存</button>
+    </div>
+  </div>
+</div>
 <div id="toast" class="toast" role="status"></div>
 
 <script>
@@ -230,8 +290,12 @@ const DB = {
 };
 
 /* ---------------- 逐字稿格式 ---------------- */
+function lineBody(l) {
+  if (l.note) return `※ 註記：${l.text}`;
+  return (l.who ? `${l.who}：` : "") + l.text;
+}
 function linesToText(lines) {
-  return lines.map((l) => `[${fmtClock(l.t)}] ${l.text}`).join("\n");
+  return lines.map((l) => `[${fmtClock(l.t)}] ${lineBody(l)}`).join("\n");
 }
 function exportText(m) {
   const body = m.text != null ? m.text : linesToText(m.lines || []);
@@ -247,6 +311,7 @@ function audioExt(type) {
 /* ---------------- 錄音 + 即時辨識 ---------------- */
 const S = {
   recording: false, start: 0, lines: [], interim: "", utterStart: 0,
+  who: "", utterWho: "",
   stream: null, mr: null, chunks: [], mrType: "",
   rec: null, srRunning: false, srBroken: false, srFailCount: 0,
   wake: null, timer: null, saveTimer: null, id: null,
@@ -260,10 +325,20 @@ function pickMime() {
   return "";
 }
 
-function addLine(text, t) {
+function addLine(text, t, who) {
   text = (text || "").trim();
   if (!text) return;
-  S.lines.push({ t, text });
+  const l = { t, text };
+  if (who) l.who = who;
+  S.lines.push(l);
+}
+/* 一句話開始時，記下當下標記的發言人 */
+function markUtterStart() {
+  if (!S.utterStart) { S.utterStart = Date.now(); S.utterWho = S.who; }
+}
+function flushInterim() {
+  if (S.interim) addLine(S.interim, (S.utterStart || Date.now()) - S.start, S.utterWho);
+  S.interim = ""; S.utterStart = 0; S.utterWho = "";
 }
 
 function startRecognition() {
@@ -275,17 +350,17 @@ function startRecognition() {
   r.onstart = () => { S.srRunning = true; };
   r.onresult = (e) => {
     S.srFailCount = 0;
-    if (!S.utterStart) S.utterStart = Date.now();
+    markUtterStart();
     let interim = "";
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const res = e.results[i];
       if (res.isFinal) {
-        addLine(res[0].transcript, S.utterStart - S.start);
-        S.utterStart = 0;
+        addLine(res[0].transcript, S.utterStart - S.start, S.utterWho);
+        S.utterStart = 0; S.utterWho = "";
       } else interim += res[0].transcript;
     }
     S.interim = interim;
-    if (interim && !S.utterStart) S.utterStart = Date.now();
+    if (interim) markUtterStart();
     renderLive();
   };
   r.onerror = (e) => {
@@ -303,7 +378,7 @@ function startRecognition() {
   r.onend = () => {
     S.srRunning = false;
     // 辨識中斷時，把還沒定稿的文字也保留下來
-    if (S.interim) { addLine(S.interim, (S.utterStart || Date.now()) - S.start); S.interim = ""; S.utterStart = 0; renderLive(); }
+    if (S.interim) { flushInterim(); renderLive(); }
     if (S.recording && !S.srBroken && document.visibilityState === "visible") {
       S.srFailCount++;
       setTimeout(startRecognition, Math.min(3000, 200 * S.srFailCount));
@@ -381,7 +456,7 @@ async function stopRecording() {
   if (S.rec) { try { S.rec.stop(); } catch (_) {} }
   // 等辨識把最後一句送回來
   await new Promise((r) => setTimeout(r, 700));
-  if (S.interim) { addLine(S.interim, (S.utterStart || Date.now()) - S.start); S.interim = ""; }
+  flushInterim();
 
   let blob = null;
   if (S.mr) {
@@ -412,7 +487,8 @@ function resetRecordUI() {
   $("clock").textContent = "00:00:00";
   $("lang").disabled = false; $("keepAudio").disabled = false;
   $("title").value = defaultTitle();
-  S.lines = []; S.interim = "";
+  S.lines = []; S.interim = ""; S.who = ""; S.utterWho = "";
+  closeSheet(); renderChips();
   renderLive();
 }
 
@@ -423,14 +499,23 @@ function renderLive() {
     return;
   }
   const frag = document.createDocumentFragment();
-  const mk = (t, text, cls) => {
+  const mk = (l, cls, idx) => {
     const d = document.createElement("div"); d.className = "line" + (cls ? " " + cls : "");
-    const tm = document.createElement("time"); tm.textContent = fmtClock(t);
-    const p = document.createElement("p"); p.textContent = text;
+    const tm = document.createElement("time"); tm.textContent = fmtClock(l.t);
+    const p = document.createElement("p");
+    if (l.note) p.textContent = "※ " + l.text;
+    else {
+      if (l.who) { const w = document.createElement("span"); w.className = "who"; w.textContent = l.who; p.append(w); }
+      p.append(document.createTextNode(l.text));
+    }
+    if (idx != null) {
+      d.tabIndex = 0; d.setAttribute("role", "button"); d.dataset.idx = idx;
+      d.setAttribute("aria-label", "編輯：" + l.text);
+    }
     d.append(tm, p); frag.append(d);
   };
-  S.lines.forEach((l) => mk(l.t, l.text));
-  if (S.interim) mk((S.utterStart || Date.now()) - S.start, S.interim, "interim");
+  S.lines.forEach((l, i) => mk(l, l.note ? "note" : "", i));
+  if (S.interim) mk({ t: (S.utterStart || Date.now()) - S.start, text: S.interim, who: S.utterWho }, "interim");
   box.replaceChildren(frag);
   if (S.recording) box.lastElementChild.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
@@ -567,7 +652,140 @@ $("delBtn").addEventListener("click", async () => {
   await renderHistory(); show("record"); toast("已刪除");
 });
 
+/* ---------------- 發言人名單 ---------------- */
+const DEFAULT_SPEAKERS = ["主席", "業務部", "財務部", "行政部"];
+let speakers = DEFAULT_SPEAKERS.slice(), manageMode = false;
+try { const s = JSON.parse(localStorage.getItem("speakers")); if (Array.isArray(s)) speakers = s; } catch (_) {}
+function saveSpeakers() { try { localStorage.setItem("speakers", JSON.stringify(speakers)); } catch (_) {} }
+
+function chip(label, { active, cls, onClick, ariaLabel } = {}) {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "chip" + (cls ? " " + cls : "") + (active ? " active" : "");
+  b.textContent = label;
+  if (active != null) b.setAttribute("aria-pressed", active ? "true" : "false");
+  if (ariaLabel) b.setAttribute("aria-label", ariaLabel);
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+function renderChips() {
+  const box = $("chips"); box.replaceChildren();
+  speakers.forEach((name, i) => {
+    if (manageMode) {
+      const b = chip(name, { ariaLabel: `從名單移除 ${name}`, onClick: () => {
+        speakers.splice(i, 1); saveSpeakers();
+        if (S.who === name) S.who = "";
+        renderChips(); renderDetailChips();
+      } });
+      const x = document.createElement("span"); x.className = "x"; x.textContent = "×"; b.append(x);
+      box.append(b);
+    } else {
+      box.append(chip(name, { active: S.who === name, onClick: () => setWho(S.who === name ? "" : name) }));
+    }
+  });
+  if (manageMode) {
+    box.append(chip("＋ 新增", { cls: "add", onClick: () => { $("addSpeakerForm").hidden = false; $("newSpeaker").focus(); } }));
+  } else if (!speakers.length) {
+    const p = document.createElement("p"); p.className = "hint"; p.textContent = "按「編輯名單」加入部門或人名。"; box.append(p);
+  }
+  $("manageBtn").textContent = manageMode ? "完成" : "編輯名單";
+}
+
+function setWho(name) {
+  S.who = name;
+  // 還沒開口說話時，馬上套用到下一句
+  if (!S.interim) S.utterWho = "";
+  renderChips();
+  if (S.recording) toast(name ? `現在發言：${name}` : "已取消發言人標記");
+}
+
+$("manageBtn").addEventListener("click", () => {
+  manageMode = !manageMode;
+  $("addSpeakerForm").hidden = !manageMode;
+  renderChips();
+});
+$("addSpeakerForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const name = $("newSpeaker").value.trim().slice(0, 20);
+  if (!name) return;
+  if (!speakers.includes(name)) { speakers.push(name); saveSpeakers(); }
+  $("newSpeaker").value = "";
+  renderChips(); renderDetailChips();
+});
+
+/* ---------------- 註記 ---------------- */
+$("noteForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const text = $("noteInput").value.trim();
+  if (!text) return;
+  if (!S.recording) { toast("開始錄音後才能插入註記"); return; }
+  S.lines.push({ t: Date.now() - S.start, text, note: true });
+  $("noteInput").value = "";
+  renderLive();
+  toast("已插入註記");
+});
+
+/* ---------------- 點一句話編輯 ---------------- */
+let sheetIdx = -1, sheetWho = "";
+function openSheet(idx) {
+  const l = S.lines[idx];
+  if (!l) return;
+  sheetIdx = idx; sheetWho = l.who || "";
+  $("sheetTitle").textContent = l.note ? "編輯註記" : "編輯這一句";
+  $("sheetTime").textContent = fmtClock(l.t);
+  $("sheetText").value = l.text;
+  $("sheetChips").hidden = !!l.note;
+  renderSheetChips();
+  $("sheet").hidden = false;
+}
+function renderSheetChips() {
+  const box = $("sheetChips"); box.replaceChildren();
+  box.append(chip("不指定", { active: !sheetWho, onClick: () => { sheetWho = ""; renderSheetChips(); } }));
+  speakers.forEach((n) => box.append(chip(n, { active: sheetWho === n, onClick: () => { sheetWho = n; renderSheetChips(); } })));
+}
+function closeSheet() { $("sheet").hidden = true; sheetIdx = -1; }
+$("live").addEventListener("click", (e) => {
+  const d = e.target.closest(".line[data-idx]");
+  if (d) openSheet(+d.dataset.idx);
+});
+$("live").addEventListener("keydown", (e) => {
+  const d = e.target.closest(".line[data-idx]");
+  if (d && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openSheet(+d.dataset.idx); }
+});
+$("sheetCancel").addEventListener("click", closeSheet);
+$("sheet").addEventListener("click", (e) => { if (e.target === $("sheet")) closeSheet(); });
+$("sheetSave").addEventListener("click", () => {
+  const l = S.lines[sheetIdx];
+  if (l) {
+    const text = $("sheetText").value.trim();
+    if (text) l.text = text;
+    if (!l.note) { if (sheetWho) l.who = sheetWho; else delete l.who; }
+  }
+  closeSheet(); renderLive();
+});
+$("sheetDel").addEventListener("click", () => {
+  if (sheetIdx >= 0) S.lines.splice(sheetIdx, 1);
+  closeSheet(); renderLive();
+});
+
+/* ---------------- 會後編輯：插入發言人 ---------------- */
+function renderDetailChips() {
+  const box = $("detailChips"); box.replaceChildren();
+  speakers.forEach((n) => box.append(chip(n, { onClick: () => insertAtCursor(`${n}：`) })));
+  box.append(chip("※ 註記", { onClick: () => insertAtCursor("※ 註記：") }));
+}
+function insertAtCursor(str) {
+  const ta = $("editor");
+  const s = ta.selectionStart ?? ta.value.length, e = ta.selectionEnd ?? s;
+  ta.value = ta.value.slice(0, s) + str + ta.value.slice(e);
+  ta.focus();
+  ta.setSelectionRange(s + str.length, s + str.length);
+  ta.dispatchEvent(new Event("input"));
+}
+
 /* ---------------- 啟動 ---------------- */
+renderChips();
+renderDetailChips();
 $("title").value = defaultTitle();
 try { const l = localStorage.getItem("lang"); if (l) $("lang").value = l; } catch (_) {}
 $("lang").addEventListener("change", () => { try { localStorage.setItem("lang", $("lang").value); } catch (_) {} });
